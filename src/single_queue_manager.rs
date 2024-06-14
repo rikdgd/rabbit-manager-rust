@@ -6,7 +6,6 @@ use lapin::{
     Connection,
     ConnectionProperties,
     Channel,
-    Consumer,
 };
 use futures::StreamExt;
 
