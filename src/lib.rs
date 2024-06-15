@@ -1,6 +1,7 @@
-mod traits;
-mod single_queue_manager;
-mod basic_message;
+pub mod traits;
+pub mod single_queue_manager;
+pub mod basic_message;
+
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
@@ -8,11 +9,13 @@ pub fn add(left: usize, right: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
+    use crate::basic_message::BasicMessage;
+    use crate::traits::mq_message::MqMessage;
+    
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn create_basic_message() {
+        let message_text = "Hello world!";
+        let message = BasicMessage::from_str(message_text);
+        assert_eq!(message.as_string(), message_text.to_string())
     }
 }
