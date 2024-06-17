@@ -90,9 +90,7 @@ impl MqManager<BasicMessage> for SingleQueueManager {
         None
     }
 
-    async fn run_handler_function(&mut self, queue_name: &str, handler_fn: impl Fn(BasicMessage)) {
-        println!("SingleQueueManager only has access to one queue which has previously been assigned,\
-        ignoring 'queue_name' parameter.");
+    async fn run_handler_function(&mut self, _queue_name: &str, handler_fn: impl Fn(BasicMessage)) {
 
         let consumer = &mut self.channel
             .basic_consume(
