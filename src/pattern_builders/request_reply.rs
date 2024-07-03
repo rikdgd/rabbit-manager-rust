@@ -12,23 +12,27 @@ use futures::StreamExt;
 use crate::pattern_builders::builder_trait::PatternBuilder;
 
 
+
 pub struct RequestReplyBuilder {
     pub connection_closed: bool,
     queue_name: String,
     connection: Connection,
     channel: Channel,
 }
+
+
+#[allow(unused)]
 impl RequestReplyBuilder {
     pub async fn new(address: &str, queue_name: &str) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::connect(address, ConnectionProperties::default()).await?;
         let channel = connection.create_channel().await?;
-
+        
         channel.queue_declare(
             queue_name,
             QueueDeclareOptions::default(),
             FieldTable::default()
         ).await?;
-
+        
         Ok(Self {
             connection_closed: false,
             queue_name: queue_name.to_string(),
@@ -36,13 +40,13 @@ impl RequestReplyBuilder {
             channel,
         })
     }
-
+    
     pub async fn exchange_message(&mut self, message: &str) -> Result<String, Box<dyn Error>> {
         self.send_message(message.to_string()).await?;
         let received = self.await_message().await?;
         Ok(received)
     }
-
+    
     async fn send_message(&self, message: String) -> Result<(), Box<dyn Error>> {
         let payload = message.as_bytes();
         self.channel.basic_publish(
@@ -52,10 +56,10 @@ impl RequestReplyBuilder {
             payload,
             BasicProperties::default()
         ).await?;
-
+        
         Ok(())
     }
-
+    
     async fn await_message(&mut self) -> Result<String, Box<dyn Error>> {
         let consumer = &mut self.channel
             .basic_consume(
@@ -66,18 +70,16 @@ impl RequestReplyBuilder {
             )
             .await
             .expect("Failed to create queue consumer.");
-
-        if let Some(delivery) = consumer.next().await {
-            if let Ok(delivery) = delivery {
-                delivery.ack(BasicAckOptions::default()).await?;
-                let message = String::from_utf8(delivery.data)?;
-                return Ok(message);
-            }
+        
+        if let Ok(delivery) = consumer.next().await.expect("No message found.") {
+            delivery.ack(BasicAckOptions::default()).await?;
+            let message = String::from_utf8(delivery.data)?;
+            return Ok(message);
         }
         
         self.close_connection().await?;
         Err(Box::new(std::io::Error::new(
-            ErrorKind::ConnectionAborted, 
+            ErrorKind::ConnectionAborted,
             "Closed the connection to RabbitMQ, since no message was received."
         )))
     }
@@ -85,6 +87,7 @@ impl RequestReplyBuilder {
         &self.queue_name
     }
 }
+
 
 impl PatternBuilder for RequestReplyBuilder {
     async fn close_connection(&mut self) -> Result<(), Box<dyn Error>> {
@@ -94,6 +97,7 @@ impl PatternBuilder for RequestReplyBuilder {
         Ok(())
     }
 }
+
 
 impl Drop for RequestReplyBuilder {
     fn drop(&mut self) {
