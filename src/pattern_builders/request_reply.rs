@@ -14,7 +14,6 @@ use crate::pattern_builders::builder_trait::PatternBuilder;
 
 pub struct RequestReplyBuilder {
     pub connection_closed: bool,
-    address: String,
     queue_name: String,
     connection: Connection,
     channel: Channel,
@@ -32,15 +31,16 @@ impl RequestReplyBuilder {
 
         Ok(Self {
             connection_closed: false,
-            address: address.to_string(),
             queue_name: queue_name.to_string(),
             connection,
             channel,
         })
     }
 
-    pub async fn exchange_message(&self, message: &str) -> Result<(), Box<dyn Error>> {
-        todo!()
+    pub async fn exchange_message(&mut self, message: &str) -> Result<String, Box<dyn Error>> {
+        self.send_message(message.to_string()).await?;
+        let received = self.await_message().await?;
+        Ok(received)
     }
 
     async fn send_message(&self, message: String) -> Result<(), Box<dyn Error>> {
@@ -69,13 +69,13 @@ impl RequestReplyBuilder {
 
         if let Some(delivery) = consumer.next().await {
             if let Ok(delivery) = delivery {
-                delivery.ack(BasicAckOptions::default()).await.expect("Failed to acknowledge delivery");
-                let message = String::from_utf8(delivery.data).expect("Failed to read data from delivery.");
+                delivery.ack(BasicAckOptions::default()).await?;
+                let message = String::from_utf8(delivery.data)?;
                 return Ok(message);
             }
         }
         
-        self.close_connection().await.expect("Failed to close connection after also failing to receive message.");
+        self.close_connection().await?;
         Err(Box::new(std::io::Error::new(
             ErrorKind::ConnectionAborted, 
             "Closed the connection to RabbitMQ, since no message was received."
