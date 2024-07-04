@@ -1,4 +1,3 @@
-mod pattern_builders;
 mod pattern_managers;
 
 pub fn add(left: usize, right: usize) -> usize {
