@@ -164,19 +164,18 @@ impl RequestReplier {
             )
             .await
             .expect("Failed to create queue consumer.");
-
-        while let Ok(delivery) = consumer.next().await.expect("No message found.") {
-            delivery.ack(BasicAckOptions::default()).await?;
-            let message = String::from_utf8(delivery.data)?;
-            let _res = handler(message);
-            return Ok(());
+        
+        let mut running = true;
+        while running {
+            if let Ok(delivery) = consumer.next().await.expect("No message found.") {
+                delivery.ack(BasicAckOptions::default()).await?;
+                let message = String::from_utf8(delivery.data)?;
+                running = handler(message);
+            }
         }
 
         self.close_connection().await?;
-        Err(Box::new(std::io::Error::new(
-            ErrorKind::ConnectionAborted,
-            "Closed the connection to RabbitMQ, since no message was received."
-        )))
+        Ok(())
     }
 
     pub fn queue_name(&self) -> &str {
