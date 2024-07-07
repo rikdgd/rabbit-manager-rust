@@ -13,7 +13,7 @@ use crate::pattern_managers::manager_trait::PatternManager;
 
 
 
-pub struct RequestReplyManager {
+pub struct RequestSender {
     connection_closed: bool,
     queue_name: String,
     connection: Connection,
@@ -22,7 +22,7 @@ pub struct RequestReplyManager {
 
 
 #[allow(unused)]
-impl RequestReplyManager {
+impl RequestSender {
     pub async fn new(address: &str, queue_name: &str) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::connect(address, ConnectionProperties::default()).await?;
         let channel = connection.create_channel().await?;
@@ -83,17 +83,18 @@ impl RequestReplyManager {
             "Closed the connection to RabbitMQ, since no message was received."
         )))
     }
+
     pub fn queue_name(&self) -> &str {
         &self.queue_name
     }
-    
+
     pub fn connection_closed(&self) -> bool {
         self.connection_closed
     }
 }
 
 
-impl PatternManager for RequestReplyManager {
+impl PatternManager for RequestSender {
     async fn close_connection(&mut self) -> Result<(), Box<dyn Error>> {
         self.channel.close(0, "").await?;
         self.connection.close(0, "").await?;
@@ -103,10 +104,94 @@ impl PatternManager for RequestReplyManager {
 }
 
 
-impl Drop for RequestReplyManager {
+impl Drop for RequestSender {
     fn drop(&mut self) {
         if !self.connection_closed {
             panic!("Failed to close connection to queue: {}", self.queue_name);
         }
+    }
+}
+
+
+
+pub struct RequestReplier {
+    connection_closed: bool,
+    queue_name: String,
+    connection: Connection,
+    channel: Channel,
+}
+impl RequestReplier {
+    pub async fn new(address: &str, queue_name: &str) -> Result<Self, Box<dyn Error>> {
+        let connection = Connection::connect(address, ConnectionProperties::default()).await?;
+        let channel = connection.create_channel().await?;
+
+        channel.queue_declare(
+            queue_name,
+            QueueDeclareOptions::default(),
+            FieldTable::default()
+        ).await?;
+
+        Ok(Self {
+            connection_closed: false,
+            queue_name: queue_name.to_string(),
+            connection,
+            channel,
+        })
+    }
+
+    async fn send_message(&self, message: String) -> Result<(), Box<dyn Error>> {
+        let payload = message.as_bytes();
+        self.channel.basic_publish(
+            "",
+            &self.queue_name,
+            BasicPublishOptions::default(),
+            payload,
+            BasicProperties::default()
+        ).await?;
+
+        Ok(())
+    }
+    
+    /// The 'handler' should take the received message as string, and do with it what's needed.
+    /// It should also return a boolean, False for when the 'await loop' needs to end. 
+    pub async fn await_messages(&mut self, handler: &mut impl FnMut(String) -> bool) -> Result<(), Box<dyn Error>> {
+        let consumer = &mut self.channel
+            .basic_consume(
+                self.queue_name(),
+                "consumer",
+                BasicConsumeOptions::default(),
+                FieldTable::default(),
+            )
+            .await
+            .expect("Failed to create queue consumer.");
+
+        while let Ok(delivery) = consumer.next().await.expect("No message found.") {
+            delivery.ack(BasicAckOptions::default()).await?;
+            let message = String::from_utf8(delivery.data)?;
+            let res = handler(message);
+            return Ok(());
+        }
+
+        self.close_connection().await?;
+        Err(Box::new(std::io::Error::new(
+            ErrorKind::ConnectionAborted,
+            "Closed the connection to RabbitMQ, since no message was received."
+        )))
+    }
+
+    pub fn queue_name(&self) -> &str {
+        &self.queue_name
+    }
+    pub fn connection_closed(&self) -> bool {
+        self.connection_closed
+    }
+}
+
+impl PatternManager for RequestReplier {
+    async fn close_connection(&mut self) -> Result<(), Box<dyn Error>> {
+        self.channel.close(0, "").await?;
+        self.connection.close(0, "").await?;
+        self.connection_closed = true;
+        Ok(())
     }
 }
