@@ -168,7 +168,7 @@ impl RequestReplier {
         while let Ok(delivery) = consumer.next().await.expect("No message found.") {
             delivery.ack(BasicAckOptions::default()).await?;
             let message = String::from_utf8(delivery.data)?;
-            let res = handler(message);
+            let _res = handler(message);
             return Ok(());
         }
 
